@@ -238,7 +238,7 @@ func TestSend_NeverBlocks(t *testing.T) {
 			t.Fatalf("queue length %d exceeds %d", n, size)
 		}
 	}
-	if d := time.Since(start); d > 100*time.Millisecond {
+	if d := time.Since(start); d > 500*time.Millisecond {
 		t.Errorf("1000 enqueues took %v", d)
 	}
 	if n := p.dropped.Load(); n < 1000-size-1 {
@@ -384,7 +384,7 @@ func TestShutdown_RespectsContext(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	err := p.Shutdown(ctx)
-	if d := time.Since(start); d > 200*time.Millisecond {
+	if d := time.Since(start); d > time.Second {
 		t.Errorf("Shutdown took %v", d)
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {

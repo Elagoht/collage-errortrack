@@ -1,6 +1,7 @@
 package errortrack
 
 import (
+	"context"
 	"math"
 	"strings"
 	"testing"
@@ -25,6 +26,11 @@ func start(t *testing.T, p *Plugin, dev bool) error {
 	if err != nil {
 		return err
 	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = p.Shutdown(ctx)
+	})
 	return app.Start()
 }
 

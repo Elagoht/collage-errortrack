@@ -123,6 +123,7 @@ func (p *Plugin) drain(ctx context.Context) error {
 	p.mu.Unlock()
 	select {
 	case <-p.done:
+		p.cancelSend()
 		return nil
 	case <-ctx.Done():
 		p.cancelSend()

@@ -120,3 +120,30 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 // Shutdown stops accepting events and sends what is queued until ctx ends;
 // what is left then is dropped.
 func (p *Plugin) Shutdown(ctx context.Context) error { return p.drain(ctx) }
+
+var _ collage.ErrorHook = (*Plugin)(nil)
+
+// OnError reports a failure collage encountered while serving a request. It
+// only builds and queues the event, and never fails or blocks the request.
+func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
+	if p.disabled || ev == nil {
+		return nil
+	}
+	if e, ok := p.build(ctx, ev.Err, ev.Status, ev.Stage, ev.Request); ok {
+		p.enqueue(e)
+	}
+	return nil
+}
+
+// Capture reports err from outside a request, such as a background job. The
+// event has no request and an unknown status, which MinStatus never filters;
+// its transaction is the route ctx carries, if any. A nil err, or a disabled
+// plugin, does nothing.
+func (p *Plugin) Capture(ctx context.Context, err error) {
+	if p.disabled || err == nil {
+		return
+	}
+	if e, ok := p.build(ctx, err, 0, "capture", nil); ok {
+		p.enqueue(e)
+	}
+}
