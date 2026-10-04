@@ -15,8 +15,8 @@ import (
 	"github.com/Elagoht/collage/pkg/collage"
 )
 
-// e2eApp is a started collage app with the plugin, pages at /broken (500) and
-// /missing-data is absent on purpose, and a panicking /boom, plus its fake.
+// e2eApp is a started collage app with the plugin, a page at /broken whose
+// required fragment fails (500) and a panicking /boom, plus its fake.
 func e2eApp(t *testing.T, o Options, dev bool) (*collage.App, *Plugin, *fakeSentry) {
 	t.Helper()
 	fake := newFakeSentry(t)
@@ -35,7 +35,7 @@ func e2eApp(t *testing.T, o Options, dev bool) (*collage.App, *Plugin, *fakeSent
 		return "", errors.New("boom")
 	})
 	page := collage.NewPage("broken").
-		WithContent(collage.NewFragment("body", "p.html").WithDataHandler(failing).Build()).
+		WithContent(collage.NewFragment("body", "p.html").WithDataHandler(failing).Required().Build()).
 		WithPath("en", "/broken").Build()
 	if err := app.RegisterPage(page); err != nil {
 		t.Fatal(err)
@@ -106,8 +106,9 @@ func TestE2E_PageFailureSendsOneEvent(t *testing.T) {
 	if ev.Level != "error" || ev.Request == nil || ev.Request.Method != http.MethodGet {
 		t.Errorf("level %q, request %+v", ev.Level, ev.Request)
 	}
-	if ev.Exception == nil || len(ev.Exception.Values) == 0 || !strings.Contains(ev.Exception.Values[0].Value, "rendered no markup") {
-		t.Errorf("exception = %+v", ev.Exception)
+	// The data handler's own error is in the chain, innermost first.
+	if ev.Exception == nil || len(ev.Exception.Values) == 0 || ev.Exception.Values[0].Value != "boom" {
+		t.Errorf("exception = %+v, want the handler's error innermost", ev.Exception)
 	}
 }
 
