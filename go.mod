@@ -6,4 +6,4 @@ module github.com/Elagoht/collage-errortrack
 
 go 1.26
 
-require github.com/Elagoht/collage v0.44.0
+require github.com/Elagoht/collage v0.45.0
