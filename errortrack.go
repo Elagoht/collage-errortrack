@@ -28,7 +28,10 @@ type Plugin struct {
 	serverName string
 	rand       func() float64 // decides sampling; nil means math/rand/v2's Float64
 
+	now func() time.Time // the sender's clock; nil means time.Now
+
 	senderStarted bool // whether startSender ran
+	sender
 }
 
 // New returns the plugin.
@@ -38,7 +41,7 @@ func New(opts Options) *Plugin { return &Plugin{opts: opts} }
 func (p *Plugin) Name() string { return Name }
 
 // Version returns the plugin's version.
-func (p *Plugin) Version() string { return "0.1.0" }
+func (p *Plugin) Version() string { return version }
 
 // Configure reads the configuration, resolves and checks the DSN, and applies
 // the defaults. Nothing it returns carries the DSN.
@@ -90,7 +93,7 @@ func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 		o.Timeout = Duration(5 * time.Second)
 	}
 	if o.HTTPClient == nil {
-		o.HTTPClient = &http.Client{}
+		o.HTTPClient = &http.Client{Timeout: clientTimeout}
 	}
 	return nil
 }
@@ -114,8 +117,6 @@ func (p *Plugin) Init(_ context.Context, host collage.Host) error {
 	return nil
 }
 
-// startSender starts the queue and its goroutine. A stub until the sender lands.
-func (p *Plugin) startSender() { p.senderStarted = true }
-
-// Shutdown does nothing yet.
-func (p *Plugin) Shutdown(context.Context) error { return nil }
+// Shutdown stops accepting events and sends what is queued until ctx ends;
+// what is left then is dropped.
+func (p *Plugin) Shutdown(ctx context.Context) error { return p.drain(ctx) }
