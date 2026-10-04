@@ -136,7 +136,7 @@ func TestRequestInfo(t *testing.T) {
 	if got.Query != "page=[filtered]&token=[filtered]" {
 		t.Errorf("Query = %q", got.Query)
 	}
-	if len(got.Headers) != 2 || got.Headers["User-Agent"] != "agent/1" || got.Headers["Referer"] != "https://x/a" {
+	if len(got.Headers) != 2 || got.Headers["User-Agent"] != "agent/1" || got.Headers["Referer"] != "https://x" {
 		t.Errorf("Headers = %v", got.Headers)
 	}
 	if got.IP != "" {
@@ -147,6 +147,9 @@ func TestRequestInfo(t *testing.T) {
 	got = requestInfo(newReq(), pattern, all)
 	if got.URL != "http://example.com/reset/abc" {
 		t.Errorf("SendPath URL = %q", got.URL)
+	}
+	if got.Headers["Referer"] != "https://x/a" {
+		t.Errorf("SendPath Referer = %q", got.Headers["Referer"])
 	}
 	if got.Query != "token=s&page=2&token=t" {
 		t.Errorf("SendQuery Query = %q", got.Query)
@@ -165,17 +168,31 @@ func TestRequestInfo(t *testing.T) {
 }
 
 func TestRequestInfo_Referer(t *testing.T) {
-	for referer, want := range map[string]string{
-		"https://user:pass@x/a?q=1": "https://x/a",
-		"https://x/a#frag":          "https://x/a",
-		"http://x/%zz?q=1":          "",
-		"::not a url":               "",
-	} {
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
-		r.Header.Set("Referer", referer)
-		got, sent := requestInfo(r, "", Options{}).Headers["Referer"]
-		if got != want || sent != (want != "") {
-			t.Errorf("Referer %q: sent %v %q, want %q", referer, sent, got, want)
+	tests := []struct {
+		referer, origin, withPath string // want without and with SendPath; "" is not sent
+	}{
+		{"https://user:pass@x/a?q=1", "https://x", "https://x/a"},
+		{"https://x/a#frag", "https://x", "https://x/a"},
+		{"https://x:8443/reset/tok?q=1", "https://x:8443", "https://x:8443/reset/tok"},
+		{"https://x", "https://x", "https://x"},
+		{"http://x/%zz?q=1", "", ""},
+		{"::not a url", "", ""},
+		{"/reset/tok", "", ""},
+		{"//x/reset/tok", "", ""},
+		{"mailto:someone@example.com", "", ""},
+	}
+	for _, tt := range tests {
+		for _, sendPath := range []bool{false, true} {
+			want := tt.origin
+			if sendPath {
+				want = tt.withPath
+			}
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.Header.Set("Referer", tt.referer)
+			got, sent := requestInfo(r, "", Options{SendPath: sendPath}).Headers["Referer"]
+			if got != want || sent != (want != "") {
+				t.Errorf("Referer %q, SendPath %v: sent %v %q, want %q", tt.referer, sendPath, sent, got, want)
+			}
 		}
 	}
 }
@@ -185,8 +202,11 @@ func TestRequestInfo_NoPattern(t *testing.T) {
 	r.TLS = &tls.ConnectionState{}
 	r.RemoteAddr = "no-port"
 	got := requestInfo(r, "", Options{SendIP: true})
-	if got.URL != "https://example.com/missing/thing" {
-		t.Errorf("URL = %q, want the raw path when no route resolved", got.URL)
+	if got.URL != "https://example.com" {
+		t.Errorf("URL = %q, want only scheme://host when no route resolved", got.URL)
+	}
+	if withPath := requestInfo(r, "", Options{SendPath: true}); withPath.URL != "https://example.com/missing/thing" {
+		t.Errorf("SendPath URL = %q, want the raw path", withPath.URL)
 	}
 	if got.Query != "" {
 		t.Errorf("Query = %q, want empty", got.Query)

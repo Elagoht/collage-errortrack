@@ -408,3 +408,51 @@ func TestShutdown_NotStarted(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A send never follows a redirect, which would carry X-Sentry-Auth to another
+// server: a 3xx is a failed send, logged and counted. The application's own
+// client is not changed.
+func TestSend_NoRedirects(t *testing.T) {
+	own := &http.Client{}
+	for name, client := range map[string]*http.Client{"default": nil, "own": own} {
+		t.Run(name, func(t *testing.T) {
+			elsewhere := newFakeSentry(t)
+			fake := newFakeSentry(t)
+			fake.set(func(f *fakeSentry) {
+				f.status = http.StatusTemporaryRedirect
+				f.location = elsewhere.srv.URL + "/api/123/envelope/"
+			})
+			log := &syncBuffer{}
+			p := sendPlugin(t, fake, Options{HTTPClient: client}, newFakeClock(), log)
+			p.startSender()
+			p.enqueue(fullEvent())
+			waitFor(t, func() bool { return fake.count() == 1 })
+			if err := p.Shutdown(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if n := elsewhere.count(); n != 0 {
+				t.Errorf("the redirect was followed: %d requests elsewhere, auth %q", n, elsewhere.received()[0].Auth)
+			}
+			if p.dropped.Load() != 1 {
+				t.Errorf("dropped = %d, want the redirected send counted", p.dropped.Load())
+			}
+			if !strings.Contains(log.String(), "status=307") {
+				t.Errorf("the redirect is not logged as a failure:\n%s", log)
+			}
+		})
+	}
+	if own.CheckRedirect != nil {
+		t.Error("the application's client was changed")
+	}
+}
+
+// The default client has no timeout of its own, so a Timeout above any fixed
+// cap is the one that bounds a send.
+func TestSend_DefaultClientNoTimeout(t *testing.T) {
+	p := testPlugin(Options{})
+	p.startSender()
+	t.Cleanup(func() { _ = p.Shutdown(context.Background()) })
+	if p.client == nil || p.client.Timeout != 0 {
+		t.Errorf("default client = %+v, want no Timeout", p.client)
+	}
+}

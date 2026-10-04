@@ -20,6 +20,7 @@ type fakeSentry struct {
 	status     int    // answer, default 200
 	retryAfter string // Retry-After on the answer, when set
 	rateLimits string // X-Sentry-Rate-Limits on the answer, when set
+	location   string // Location on the answer, when set
 	hanging    bool   // block every request until cleanup or its context ends
 	requests   []fakeRequest
 }
@@ -45,7 +46,7 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	f.mu.Lock()
 	hanging := f.hanging
-	status, retryAfter, rateLimits := f.status, f.retryAfter, f.rateLimits
+	status, retryAfter, rateLimits, location := f.status, f.retryAfter, f.rateLimits, f.location
 	f.mu.Unlock()
 	if hanging {
 		select {
@@ -65,6 +66,9 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if rateLimits != "" {
 		w.Header().Set("X-Sentry-Rate-Limits", rateLimits)
+	}
+	if location != "" {
+		w.Header().Set("Location", location)
 	}
 	w.WriteHeader(status)
 }

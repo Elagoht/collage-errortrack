@@ -84,7 +84,7 @@ func TestOptions_Defaults(t *testing.T) {
 	}
 	o := p.opts
 	if o.Environment != "production" || o.MinStatus != 500 || o.SampleRate != 1 ||
-		o.PerMinute != 60 || o.QueueSize != 100 || time.Duration(o.Timeout) != 5*time.Second || o.HTTPClient == nil {
+		o.PerMinute != 60 || o.QueueSize != 100 || time.Duration(o.Timeout) != 5*time.Second || p.client == nil {
 		t.Errorf("defaults = %+v", o)
 	}
 	if p.opts.Release == "" {
@@ -105,21 +105,21 @@ func TestInit_DisabledInDevelopment(t *testing.T) {
 	if err := start(t, p, true); err != nil {
 		t.Fatal(err)
 	}
-	if p.senderStarted {
+	if p.started.Load() {
 		t.Error("the sender started in development without InDevelopment")
 	}
 	on := New(Options{DSN: goodDSN, InDevelopment: true})
 	if err := start(t, on, true); err != nil {
 		t.Fatal(err)
 	}
-	if !on.senderStarted {
+	if !on.started.Load() {
 		t.Error("InDevelopment did not start the sender")
 	}
 	prod := New(Options{DSN: goodDSN})
 	if err := start(t, prod, false); err != nil {
 		t.Fatal(err)
 	}
-	if !prod.senderStarted {
+	if !prod.started.Load() {
 		t.Error("the sender did not start in production")
 	}
 }
@@ -141,5 +141,41 @@ func TestOptions_SampleRateNaN(t *testing.T) {
 	o := Options{SampleRate: math.NaN()}
 	if err := o.validate(); err == nil {
 		t.Fatal("a NaN sampleRate validated")
+	}
+}
+
+// In development without InDevelopment nothing is sent, so a missing DSN is not
+// an error there; a DSN that is given is still checked.
+func TestConfigure_DevelopmentNeedsNoDSN(t *testing.T) {
+	t.Setenv("ERRORTRACK_TEST_EMPTY", "")
+	for name, o := range map[string]Options{
+		"no dsn":       {},
+		"empty dsnEnv": {DSNEnv: "ERRORTRACK_TEST_EMPTY"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := New(o)
+			if err := start(t, p, true); err != nil {
+				t.Fatalf("development without a DSN: %v", err)
+			}
+			if p.started.Load() {
+				t.Error("the sender started")
+			}
+		})
+	}
+	for name, o := range map[string]Options{
+		"invalid dsn":                 {DSN: "https://secretkey@o1.ingest.sentry.io/abc"},
+		"no dsn, inDevelopment":       {InDevelopment: true},
+		"empty dsnEnv, inDevelopment": {DSNEnv: "ERRORTRACK_TEST_EMPTY", InDevelopment: true},
+		"invalid sampleRate, no dsn":  {SampleRate: 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := start(t, New(o), true)
+			if err == nil {
+				t.Fatal("want a start error")
+			}
+			if strings.Contains(err.Error(), "secretkey") {
+				t.Errorf("error echoes the key: %v", err)
+			}
+		})
 	}
 }

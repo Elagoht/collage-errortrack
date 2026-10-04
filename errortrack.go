@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/Elagoht/collage/pkg/collage"
@@ -22,6 +22,7 @@ type Plugin struct {
 	opts Options
 	dsn  dsn
 
+	configured bool // whether Configure succeeded
 	disabled   bool // development without InDevelopment: nothing is sent
 	host       collage.Host
 	log        *slog.Logger
@@ -30,7 +31,9 @@ type Plugin struct {
 
 	now func() time.Time // the sender's clock; nil means time.Now
 
-	senderStarted bool // whether startSender ran
+	// started is set last by startSender, once the queue and everything Init
+	// writes are in place; until then OnError and Capture do nothing.
+	started atomic.Bool
 	sender
 }
 
@@ -44,33 +47,38 @@ func (p *Plugin) Name() string { return Name }
 func (p *Plugin) Version() string { return version }
 
 // Configure reads the configuration, resolves and checks the DSN, and applies
-// the defaults. Nothing it returns carries the DSN.
+// the defaults. A plugin that will send nothing (development without
+// InDevelopment) needs no DSN, but one that is given is still checked. Nothing
+// it returns carries the DSN.
 func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 	if err := host.Config(&p.opts); err != nil {
 		return err
 	}
 	o := &p.opts
+	dev := host.DevMode()
+	p.disabled = dev && !o.InDevelopment
 	raw := o.DSN
 	if o.DSNEnv != "" {
 		raw = os.Getenv(o.DSNEnv)
-		if raw == "" {
-			return fmt.Errorf("errortrack: the environment variable %s is empty", o.DSNEnv)
-		}
 	}
-	if raw == "" {
+	switch {
+	case raw != "":
+		d, err := parseDSN(raw)
+		if err != nil {
+			return err
+		}
+		p.dsn = d
+	case p.disabled:
+		// Nothing is sent, so nothing needs a DSN.
+	case o.DSNEnv != "":
+		return fmt.Errorf("errortrack: the environment variable %s is empty", o.DSNEnv)
+	default:
 		return errors.New("errortrack: no DSN: set DSN or DSNEnv")
 	}
-	d, err := parseDSN(raw)
-	if err != nil {
-		return err
-	}
-	p.dsn = d
 	if err := o.validate(); err != nil {
 		return err
 	}
 
-	dev := host.DevMode()
-	p.disabled = dev && !o.InDevelopment
 	if o.Environment == "" {
 		o.Environment = "production"
 		if dev {
@@ -92,16 +100,14 @@ func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 	if o.Timeout == 0 {
 		o.Timeout = Duration(5 * time.Second)
 	}
-	if o.HTTPClient == nil {
-		o.HTTPClient = &http.Client{Timeout: clientTimeout}
-	}
+	p.configured = true
 	return nil
 }
 
 // Init stores the host and logger, and starts the sender unless the plugin is
 // disabled (development without InDevelopment).
 func (p *Plugin) Init(_ context.Context, host collage.Host) error {
-	if p.dsn.Key == "" {
+	if !p.configured {
 		return errors.New("errortrack: register the plugin in Config.Plugins, where Configure runs")
 	}
 	p.host = host
@@ -126,7 +132,7 @@ var _ collage.ErrorHook = (*Plugin)(nil)
 // OnError reports a failure collage encountered while serving a request. It
 // only builds and queues the event, and never fails or blocks the request.
 func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
-	if p.disabled || ev == nil {
+	if !p.started.Load() || ev == nil {
 		return nil
 	}
 	if e, ok := p.build(ctx, ev.Err, ev.Status, ev.Stage, ev.Request); ok {
@@ -137,10 +143,10 @@ func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
 
 // Capture reports err from outside a request, such as a background job. The
 // event has no request and an unknown status, which MinStatus never filters;
-// its transaction is the route ctx carries, if any. A nil err, or a disabled
-// plugin, does nothing.
+// its transaction is the route ctx carries, if any. A nil err, a disabled
+// plugin, or a call before the app started does nothing.
 func (p *Plugin) Capture(ctx context.Context, err error) {
-	if p.disabled || err == nil {
+	if !p.started.Load() || err == nil {
 		return
 	}
 	if e, ok := p.build(ctx, err, 0, "capture", nil); ok {

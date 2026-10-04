@@ -164,7 +164,7 @@ func TestE2E_DisabledInDevelopment(t *testing.T) {
 	get(app, "/broken", nil)
 	get(app, "/boom", nil)
 	p.Capture(context.Background(), errors.New("job failed"))
-	if p.senderStarted {
+	if p.started.Load() {
 		t.Error("a sender goroutine started")
 	}
 	shutdown(t, app)
@@ -214,6 +214,93 @@ func TestE2E_NoSecretsInEnvelopes(t *testing.T) {
 			if bytes.Contains(r.Body, []byte(secret)) {
 				t.Errorf("an envelope carries %q", secret)
 			}
+		}
+	}
+}
+
+// A middleware's panic happens before a route resolves: without SendPath the
+// event's URL is only scheme://host, never the raw path.
+func TestE2E_MiddlewarePanicSendsNoPath(t *testing.T) {
+	for _, sendPath := range []bool{false, true} {
+		fake := newFakeSentry(t)
+		p := New(Options{DSN: strings.Replace(fake.srv.URL, "://", "://fakekey@", 1) + "/123", SendPath: sendPath})
+		app, err := collage.New(&collage.Config{
+			Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
+			Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>hi</p>`)}}, Root: "t"},
+			Plugins:  []collage.Plugin{p},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Use(func(http.Handler) http.Handler {
+			return http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("middleware") })
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Start(); err != nil {
+			t.Fatal(err)
+		}
+		if w := get(app, "/reset/SECRET-TOKEN-77", nil); w.Code != http.StatusInternalServerError {
+			t.Fatalf("GET = %d, want 500", w.Code)
+		}
+		shutdown(t, app)
+		got := fake.received()
+		if len(got) != 1 {
+			t.Fatalf("SendPath %v: %d envelopes, want 1", sendPath, len(got))
+		}
+		ev := decodeEvent(t, got[0].Body)
+		want := "http://example.com"
+		if sendPath {
+			want += "/reset/SECRET-TOKEN-77"
+		}
+		if ev.Request == nil || ev.Request.URL != want {
+			t.Errorf("SendPath %v: request = %+v, want URL %q", sendPath, ev.Request, want)
+		}
+		if !sendPath && bytes.Contains(got[0].Body, []byte("SECRET-TOKEN-77")) {
+			t.Error("the envelope carries the raw path")
+		}
+	}
+}
+
+// Capture and OnError before the app starts do nothing, and race with nothing
+// Init writes.
+func TestE2E_CaptureBeforeStart(t *testing.T) {
+	fake := newFakeSentry(t)
+	p := New(Options{DSN: strings.Replace(fake.srv.URL, "://", "://fakekey@", 1) + "/123"})
+	app, err := collage.New(&collage.Config{
+		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
+		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>hi</p>`)}}, Root: "t"},
+		Plugins:  []collage.Plugin{p},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Capture(context.Background(), errors.New("too early"))
+	_ = p.OnError(context.Background(), &collage.ErrorEvent{Err: errors.New("too early"), Status: 500})
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				p.Capture(context.Background(), errors.New("racing"))
+			}
+		}
+	}()
+	startErr := app.Start()
+	close(stop)
+	<-done
+	if startErr != nil {
+		t.Fatal(startErr)
+	}
+	shutdown(t, app)
+	for _, r := range fake.received() {
+		if bytes.Contains(r.Body, []byte("too early")) {
+			t.Error("an event captured before Start was sent")
 		}
 	}
 }

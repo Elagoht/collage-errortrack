@@ -42,7 +42,7 @@ type Options struct {
 	QueueSize     int      `json:"queueSize"`     // default 100
 	InDevelopment bool     `json:"inDevelopment"` // default false: nothing is sent in development
 	Timeout       Duration `json:"timeout"`       // per send, default "5s"
-	SendPath      bool     `json:"sendPath"`      // raw path instead of the route pattern
+	SendPath      bool     `json:"sendPath"`      // raw path instead of the route pattern, and the Referer's path
 	SendQuery     bool     `json:"sendQuery"`     // query values instead of "[filtered]"
 	SendIP        bool     `json:"sendIP"`        // the client address
 

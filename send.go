@@ -22,7 +22,6 @@ const (
 	defaultQueueSize  = 100
 	defaultTimeout    = 5 * time.Second
 	defaultPause      = time.Minute // a 429 that says nothing of how long
-	clientTimeout     = 10 * time.Second
 	maxResponseBody   = 64 << 10
 	dropReportEvery   = time.Minute
 	envelopeType      = "application/x-sentry-envelope"
@@ -67,15 +66,12 @@ func (p *Plugin) startSender() {
 	if size == 0 {
 		size = defaultQueueSize
 	}
-	p.client = p.opts.HTTPClient
-	if p.client == nil {
-		p.client = &http.Client{Timeout: clientTimeout}
-	}
+	p.client = sendClient(p.opts.HTTPClient)
 	p.sendCtx, p.cancelSend = context.WithCancel(context.Background())
 	p.done = make(chan struct{})
 	p.queue = make(chan *Event, size)
-	p.senderStarted = true
 	go p.run(p.queue)
+	p.started.Store(true)
 }
 
 // run sends every queued event until the queue is closed and empty.
@@ -198,10 +194,7 @@ func (p *Plugin) post(ctx context.Context, e *Event, now time.Time) bool {
 	req.Header.Set("Content-Type", envelopeType)
 	client := p.client
 	if client == nil {
-		client = p.opts.HTTPClient
-	}
-	if client == nil {
-		client = &http.Client{Timeout: clientTimeout}
+		client = sendClient(p.opts.HTTPClient)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -223,6 +216,18 @@ func (p *Plugin) post(ctx context.Context, e *Event, now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+// sendClient is a copy of c, or of a client with no timeout of its own (each
+// send is bounded by Timeout), that never follows a redirect: following one
+// would carry X-Sentry-Auth to wherever it points. A 3xx is a failed send.
+func sendClient(c *http.Client) *http.Client {
+	var cp http.Client
+	if c != nil {
+		cp = *c
+	}
+	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &cp
 }
 
 // transportReason is err without the URL a *url.Error carries.

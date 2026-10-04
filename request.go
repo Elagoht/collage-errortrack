@@ -13,9 +13,10 @@ import (
 var sentHeaders = []string{"User-Agent", "Accept", "Accept-Language", "Content-Type", "Content-Length", "Referer"}
 
 // requestInfo describes r with the defaults of the Privacy table: the route
-// pattern for the path (the raw path when no route resolved), query keys with
-// filtered values, an allowlist of headers, and no client address. Nil when r
-// is nil.
+// pattern for the path (no path at all, only scheme://host, when no route
+// resolved), query keys with filtered values, an allowlist of headers with the
+// Referer cut to its origin, and no client address. SendPath sends the raw path
+// and the Referer's path. Nil when r is nil.
 func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 	if r == nil {
 		return nil
@@ -25,7 +26,7 @@ func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 		scheme = "https"
 	}
 	path := pattern
-	if o.SendPath || path == "" {
+	if o.SendPath {
 		path = r.URL.Path
 	}
 	info := &RequestInfo{
@@ -45,7 +46,7 @@ func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 		}
 		if name == "Referer" {
 			var ok bool
-			if v, ok = bareReferer(v); !ok {
+			if v, ok = bareReferer(v, o.SendPath); !ok {
 				continue
 			}
 		}
@@ -75,12 +76,17 @@ func filteredQuery(q url.Values) string {
 	return strings.Join(parts, "&")
 }
 
-// bareReferer drops a Referer's credentials, query and fragment. An unparsable
-// one is not sent at all: cutting it by hand could leave a secret in.
-func bareReferer(raw string) (string, bool) {
+// bareReferer cuts a Referer to its origin, scheme://host, or with keepPath to
+// its scheme, host and path, dropping credentials, query and fragment. One that
+// cannot be parsed, or has no scheme or host, is not sent at all: cutting it by
+// hand could leave a secret in.
+func bareReferer(raw string, keepPath bool) (string, bool) {
 	u, err := url.Parse(raw)
-	if err != nil {
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "", false
+	}
+	if !keepPath {
+		return u.Scheme + "://" + u.Host, true
 	}
 	u.User = nil
 	u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""

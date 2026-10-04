@@ -45,7 +45,7 @@
       },
       "sendPath": {
         "type": "boolean",
-        "description": "raw path instead of the route pattern"
+        "description": "raw path instead of the route pattern, and the Referer's path"
       },
       "sendQuery": {
         "type": "boolean",
