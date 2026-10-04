@@ -44,25 +44,28 @@ request, and reports a request's panic as a `*collage.PanicError`. Register it i
 
 | Option | JSON | Default | |
 | --- | --- | --- | --- |
-| `DSNEnv` | `dsnEnv` | | Name of the environment variable holding the DSN. Startup fails if it is empty |
-| `DSN` | not configurable | | The DSN, set from Go. One of `DSN` or `DSNEnv` is required; `DSNEnv` wins |
+| `DSNEnv` | `dsnEnv` | | Name of the environment variable holding the DSN. Startup fails if it is empty, except in dev mode without `InDevelopment` |
+| `DSN` | not configurable | | The DSN, set from Go. One of `DSN` or `DSNEnv` is required, except in dev mode without `InDevelopment`; `DSNEnv` wins |
 | `Environment` | `environment` | `"development"` in dev mode, else `"production"` | Sentry's environment tag |
 | `Release` | `release` | the build ID | Sentry's release |
 | `MinStatus` | `minStatus` | `500` | Lowest status reported. Panics are always reported |
 | `SampleRate` | `sampleRate` | `1` | Fraction of events sent, in (0, 1]; `0` means all |
 | `PerMinute` | `perMinute` | `60` | Events sent per minute at most; the rest are dropped |
 | `QueueSize` | `queueSize` | `100` | Events waiting to be sent; a full queue drops new ones |
-| `InDevelopment` | `inDevelopment` | `false` | Without it nothing is sent in dev mode |
-| `Timeout` | `timeout` | `"5s"` | Per send. A Go duration string, or nanoseconds |
-| `SendPath` | `sendPath` | `false` | The raw path instead of the route pattern |
+| `InDevelopment` | `inDevelopment` | `false` | Without it nothing is sent in dev mode, and no DSN is needed |
+| `Timeout` | `timeout` | `"5s"` | Per send, and not capped: the default client has no timeout of its own, while an `HTTPClient` you pass keeps its own `Timeout`. A Go duration string, or nanoseconds |
+| `SendPath` | `sendPath` | `false` | The raw path instead of the route pattern, and the `Referer`'s path |
 | `SendQuery` | `sendQuery` | `false` | Query values instead of `[filtered]` |
 | `SendIP` | `sendIP` | `false` | The client address |
 | `User` | not configurable | | `func(r *http.Request) User`. Go only |
 | `BeforeSend` | not configurable | | `func(e *Event) bool`; `false` drops the event. Go only |
-| `HTTPClient` | not configurable | | Your own client for the send. Go only |
+| `HTTPClient` | not configurable | | Your own client for the send. A copy is used that never follows a redirect. Go only |
 
 A negative `minStatus`, `perMinute`, `queueSize` or `timeout`, or a `sampleRate`
 outside [0, 1], fails startup.
+
+In dev mode without `InDevelopment` nothing is sent, so the DSN may be left
+unset there; a DSN that is set is still checked.
 
 ## What is sent
 
@@ -72,10 +75,10 @@ outside [0, 1], fails startup.
 | A panic's stack frames, with `in_app` marking your module | always | |
 | Level: `error`, or `fatal` for a panic | always | |
 | Tags `stage`, `route.kind`, `method`, `status` | always | |
-| The route pattern (`/posts/{slug}`) as transaction and in the URL | the raw path only with `SendPath` | |
+| The route pattern (`/posts/{slug}`) as transaction and in the URL; only `scheme://host` when no route resolved (a middleware's panic) | the raw path only with `SendPath` | |
 | Query keys, each value as `[filtered]` | the values only with `SendQuery` | |
 | Request headers `User-Agent`, `Accept`, `Accept-Language`, `Content-Type`, `Content-Length` | always | every other header: `Cookie`, `Authorization`, CSRF tokens... |
-| `Referer`, without credentials, query and fragment | always | |
+| `Referer`, as its origin `scheme://host`; one without a scheme and host is not sent | its path too (still without credentials, query and fragment) only with `SendPath` | |
 | The client address | only with `SendIP` | |
 | A user ID, username and email | only what your `User` callback returns | |
 | Environment, release, server host name | always | |
@@ -87,16 +90,23 @@ The tags are `stage` (where collage met the failure, or `capture` for `Capture`)
 ## Error messages may carry secrets
 
 A message is whatever the failing code wrote into its error, and it is sent as is:
-a database driver may echo a query, a parser the input it choked on. Scrub with
-`BeforeSend`, which may edit the event or return `false` to drop it:
+a database driver may echo a query, a parser the input it choked on. collage's own
+messages can name the request path, as in
+`collage: 503 Service Unavailable for /reset/…`, so a token in the path reaches
+Sentry that way even without `SendPath`. Scrub with `BeforeSend`, which may edit
+the event or return `false` to drop it:
 
 ```go
-var secret = regexp.MustCompile(`password=[^&\s]+`)
+var (
+	secret    = regexp.MustCompile(`password=[^&\s]+`)
+	resetPath = regexp.MustCompile(`/reset/[^\s"]+`)
+)
 
 errortrack.New(errortrack.Options{
 	BeforeSend: func(e *errortrack.Event) bool {
 		for i := range e.Exceptions {
-			e.Exceptions[i].Value = secret.ReplaceAllString(e.Exceptions[i].Value, "password=[filtered]")
+			v := secret.ReplaceAllString(e.Exceptions[i].Value, "password=[filtered]")
+			e.Exceptions[i].Value = resetPath.ReplaceAllString(v, "/reset/[filtered]")
 		}
 		return true
 	},
@@ -105,6 +115,12 @@ errortrack.New(errortrack.Options{
 
 A panic in `BeforeSend` or `User` is recovered and logged; `BeforeSend` dropping
 the event, `User` leaving it without a user.
+
+`User` and `BeforeSend` run on the request's goroutine, for many requests at
+once: keep them fast, and safe for concurrent use.
+
+Frame file names are the paths your binary was built from. Build with
+`go build -trimpath` to keep absolute paths of the build machine out of them.
 
 ## Who it happened to
 
@@ -136,7 +152,8 @@ go func() {
 }()
 ```
 
-Keep the plugin you register and call `Capture` on it. A nil error does nothing.
+Keep the plugin you register and call `Capture` on it. A nil error does nothing,
+and so does a call before the app has started.
 
 ## GlitchTip and self-hosted Sentry
 
@@ -158,4 +175,6 @@ works too. The project must be a number.
 - An `error_page` event, an error page that itself failed to render, is reported
   with status `500`.
 - `Shutdown` sends what is queued until its context ends; what is left then is
-  dropped.
+  dropped. collage calls it after its server has shut down, with the same
+  context, so leave `ShutdownTimeout` room to drain the queue after the last
+  request.
