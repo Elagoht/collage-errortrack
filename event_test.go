@@ -72,8 +72,7 @@ func TestExceptions_PanicWithError(t *testing.T) {
 	if got[0].Type != "*errors.errorString" || got[0].Value != "db down" {
 		t.Errorf("innermost = %+v, want the panic's error", got[0])
 	}
-	var pe *collage.PanicError
-	if got[1].Type != fmt.Sprintf("%T", pe) || got[1].Value != "collage: panic: db down" {
+	if got[1].Type != "*collage.PanicError" || got[1].Value != "collage: panic: db down" {
 		t.Errorf("middle = %+v, want the PanicError", got[1])
 	}
 	if len(got[1].Frames) == 0 {
@@ -161,6 +160,22 @@ func TestRequestInfo(t *testing.T) {
 		dump := fmt.Sprintf("%+v", *info)
 		if strings.Contains(dump, "secret") {
 			t.Errorf("options %+v send a secret header: %s", o, dump)
+		}
+	}
+}
+
+func TestRequestInfo_Referer(t *testing.T) {
+	for referer, want := range map[string]string{
+		"https://user:pass@x/a?q=1": "https://x/a",
+		"https://x/a#frag":          "https://x/a",
+		"http://x/%zz?q=1":          "",
+		"::not a url":               "",
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("Referer", referer)
+		got, sent := requestInfo(r, "", Options{}).Headers["Referer"]
+		if got != want || sent != (want != "") {
+			t.Errorf("Referer %q: sent %v %q, want %q", referer, sent, got, want)
 		}
 	}
 }

@@ -123,13 +123,15 @@ func eventID() string {
 // a multi-error, unless a later branch holds the panic: the core reports one as
 // fmt.Errorf("%w: %w", ErrPanic, &PanicError{...}), whose first branch is the
 // bare sentinel. Each link becomes one exception with its %T type and its own
-// message; a *PanicError gets frames from its stack. They are returned
+// message; a *PanicError, typed by its public name, gets frames from its stack. They are returned
 // outermost last, as Sentry expects, and at most maxChain of them.
 func exceptions(err error) []Exception {
 	var out []Exception
 	for err != nil && len(out) < maxChain {
 		x := Exception{Type: fmt.Sprintf("%T", err), Value: err.Error()}
 		if pe, ok := err.(*collage.PanicError); ok {
+			// The alias's %T names the internal package; report the public name.
+			x.Type = "*collage.PanicError"
 			x.Frames = parseFrames(pe.Stack, mainModule())
 		}
 		out = append(out, x)

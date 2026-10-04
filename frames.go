@@ -19,7 +19,8 @@ var mainModule = sync.OnceValue(func() string {
 // parseFrames reads a stack in runtime/debug.Stack's format: a "goroutine N
 // [...]:" header, then a function line ("pkg.Func(args)") followed by a
 // tab-indented "file:line +0x.." line for each call. Argument values are
-// dropped, as are "created by" lines. Frames come oldest call first, as Sentry
+// dropped, as are "created by" lines and, after a recovered panic, the frames
+// newer than the panic site. Frames come oldest call first, as Sentry
 // orders them; nil when nothing parses.
 func parseFrames(stack []byte, mainModule string) []Frame {
 	lines := strings.Split(string(stack), "\n")
@@ -46,6 +47,18 @@ func parseFrames(stack []byte, mainModule string) []Frame {
 			continue
 		}
 		frames = append(frames, Frame{Function: name, File: file, Line: line, InApp: inApp(name, mainModule)})
+	}
+	// Newest first here: when the stack was taken after a recovered panic, drop
+	// everything down to and including the runtime's panic frame (debug.Stack,
+	// the recovering closure, panic itself), so the newest frame is the site.
+	for i, f := range frames {
+		if f.Function == "panic" || f.Function == "runtime.gopanic" {
+			frames = frames[i+1:]
+			break
+		}
+	}
+	if len(frames) == 0 {
+		return nil
 	}
 	for l, r := 0, len(frames)-1; l < r; l, r = l+1, r-1 {
 		frames[l], frames[r] = frames[r], frames[l]

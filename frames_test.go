@@ -106,3 +106,27 @@ func TestFrames_Garbage(t *testing.T) {
 		t.Errorf("parseFrames(nil) = %+v, want nil", got)
 	}
 }
+
+// panicHere panics and returns the stack recovered from it.
+func panicHere() (stack []byte) {
+	defer func() {
+		_ = recover()
+		stack = debug.Stack()
+	}()
+	panic("here")
+}
+
+func TestFrames_FromThePanicSite(t *testing.T) {
+	frames := parseFrames(panicHere(), testModule)
+	if len(frames) == 0 {
+		t.Fatal("no frames")
+	}
+	if last := frames[len(frames)-1]; last.Function != testModule+".panicHere" {
+		t.Errorf("the newest frame is %q, want the function that panicked", last.Function)
+	}
+	for _, f := range frames {
+		if f.Function == "panic" || f.Function == "runtime/debug.Stack" || strings.HasPrefix(f.Function, testModule+".panicHere.") {
+			t.Errorf("a frame newer than the panic site survived: %q", f.Function)
+		}
+	}
+}

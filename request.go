@@ -44,7 +44,10 @@ func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 			continue
 		}
 		if name == "Referer" {
-			v = withoutQuery(v)
+			var ok bool
+			if v, ok = bareReferer(v); !ok {
+				continue
+			}
 		}
 		info.Headers[name] = v
 	}
@@ -72,14 +75,14 @@ func filteredQuery(q url.Values) string {
 	return strings.Join(parts, "&")
 }
 
-// withoutQuery drops a URL's query and fragment.
-func withoutQuery(raw string) string {
-	if u, err := url.Parse(raw); err == nil {
-		u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
-		return u.String()
+// bareReferer drops a Referer's credentials, query and fragment. An unparsable
+// one is not sent at all: cutting it by hand could leave a secret in.
+func bareReferer(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
 	}
-	if i := strings.IndexAny(raw, "?#"); i >= 0 {
-		return raw[:i]
-	}
-	return raw
+	u.User = nil
+	u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = "", false, "", ""
+	return u.String(), true
 }
