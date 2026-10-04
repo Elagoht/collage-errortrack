@@ -26,6 +26,7 @@ type Plugin struct {
 	host       collage.Host
 	log        *slog.Logger
 	serverName string
+	rand       func() float64 // decides sampling; nil means math/rand/v2's Float64
 
 	senderStarted bool // whether startSender ran
 }

@@ -92,7 +92,7 @@ type RequestInfo struct {
 // validate checks the options. Its errors never carry the DSN.
 func (o *Options) validate() error {
 	switch {
-	case o.SampleRate < 0 || o.SampleRate > 1:
+	case !(o.SampleRate >= 0 && o.SampleRate <= 1): // NaN fails both
 		return fmt.Errorf("errortrack: sampleRate %v must be in (0, 1], or 0 for all", o.SampleRate)
 	case o.MinStatus < 0:
 		return fmt.Errorf("errortrack: minStatus %d must not be negative", o.MinStatus)

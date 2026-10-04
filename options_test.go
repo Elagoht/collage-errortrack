@@ -1,6 +1,7 @@
 package errortrack
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -127,5 +128,12 @@ func TestDuration_JSON(t *testing.T) {
 	}
 	if err := d.UnmarshalJSON([]byte(`"soon"`)); err == nil {
 		t.Error("want an error for a bad string")
+	}
+}
+
+func TestOptions_SampleRateNaN(t *testing.T) {
+	o := Options{SampleRate: math.NaN()}
+	if err := o.validate(); err == nil {
+		t.Fatal("a NaN sampleRate validated")
 	}
 }
