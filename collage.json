@@ -1,0 +1,74 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Elagoht/collage-snippets-highlighter/main/schemas/collage-plugin-manifest.schema.json",
+  "name": "elagoht/errortrack",
+  "description": "Package errortrack sends server errors (5xx and panics) to Sentry, or any service speaking the Sentry protocol, with the standard library alone.",
+  "repository": "https://github.com/Elagoht/collage-errortrack",
+  "config": {
+    "type": "object",
+    "description": "Package errortrack sends server errors (5xx and panics) to Sentry, or any service speaking the Sentry protocol, with the standard library alone.",
+    "properties": {
+      "dsnEnv": {
+        "type": "string",
+        "description": "name of the environment variable holding the DSN"
+      },
+      "environment": {
+        "type": "string",
+        "description": "default \"development\" in DevMode, else \"production\""
+      },
+      "inDevelopment": {
+        "type": "boolean",
+        "description": "default false: nothing is sent in development"
+      },
+      "minStatus": {
+        "type": "integer",
+        "description": "default 500; panics are always sent"
+      },
+      "perMinute": {
+        "type": "integer",
+        "description": "events sent per minute at most, default 60"
+      },
+      "queueSize": {
+        "type": "integer",
+        "description": "default 100"
+      },
+      "release": {
+        "type": "string",
+        "description": "default host.BuildID()"
+      },
+      "sampleRate": {
+        "type": "number",
+        "description": "fraction sent, (0, 1]; 0 (unset) means 1"
+      },
+      "sendIP": {
+        "type": "boolean",
+        "description": "the client address"
+      },
+      "sendPath": {
+        "type": "boolean",
+        "description": "raw path instead of the route pattern"
+      },
+      "sendQuery": {
+        "type": "boolean",
+        "description": "query values instead of \"[filtered]\""
+      },
+      "timeout": {
+        "description": "per send, default \"5s\"",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
+            "examples": [
+              "30s",
+              "5m"
+            ]
+          },
+          {
+            "type": "integer",
+            "description": "nanoseconds"
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  }
+}
