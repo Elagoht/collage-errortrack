@@ -36,7 +36,8 @@ Set `SENTRY_DSN` to your project's DSN, `https://<key>@o0.ingest.sentry.io/0`.
 The DSN is a credential: keep it in the environment, not in `collage.json`. Errors
 the plugin returns never carry it.
 
-Requires collage v0.45.0 or later (for `ErrorHook`). Register it in
+Requires collage v0.45.0 or later, whose `ErrorEvent` carries the status and the
+request, and reports a request's panic as a `*collage.PanicError`. Register it in
 `Config.Plugins`, where `Configure` runs.
 
 ## Options
