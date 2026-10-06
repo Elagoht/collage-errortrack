@@ -25,7 +25,7 @@ func e2eApp(t *testing.T, o Options, dev bool) (*collage.App, *Plugin, *fakeSent
 	app, err := collage.New(&collage.Config{
 		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
 		DevMode:  dev,
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.Data}}</p>`)}}, Root: "t"},
+		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
 		Plugins:  []collage.Plugin{p},
 	})
 	if err != nil {
@@ -35,7 +35,7 @@ func e2eApp(t *testing.T, o Options, dev bool) (*collage.App, *Plugin, *fakeSent
 		return "", errors.New("boom")
 	})
 	page := collage.NewPage("broken").
-		WithContent(collage.NewFragment("body", "p.html").WithDataHandler(failing).Required().Build()).
+		WithContent(collage.NewFragment("body", "p.html").WithData(failing).Required().Build()).
 		WithPath("en", "/broken").Build()
 	if err := app.RegisterPage(page); err != nil {
 		t.Fatal(err)

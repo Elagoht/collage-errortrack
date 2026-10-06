@@ -26,7 +26,7 @@ const (
 	dropReportEvery   = time.Minute
 	envelopeType      = "application/x-sentry-envelope"
 	sdkName           = "collage-errortrack"
-	version           = "0.1.0"
+	version           = "0.1.1"
 	envelopeTimestamp = time.RFC3339Nano
 )
 
