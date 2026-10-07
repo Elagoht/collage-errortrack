@@ -51,9 +51,11 @@ func (p *Plugin) Version() string { return version }
 // InDevelopment) needs no DSN, but one that is given is still checked. Nothing
 // it returns carries the DSN.
 func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
-	if err := host.Config(&p.opts); err != nil {
+	cfg, err := collage.PluginConfig(host, p.opts)
+	if err != nil {
 		return err
 	}
+	p.opts = cfg
 	o := &p.opts
 	dev := host.DevMode()
 	p.disabled = dev && !o.InDevelopment
