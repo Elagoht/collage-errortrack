@@ -132,9 +132,12 @@ func (p *Plugin) Shutdown(ctx context.Context) error { return p.drain(ctx) }
 var _ collage.ErrorHook = (*Plugin)(nil)
 
 // OnError reports a failure collage encountered while serving a request. It
-// only builds and queues the event, and never fails or blocks the request.
+// only builds and queues the event, and never fails or blocks the request. A
+// failure answering a static build's header capture (collage.IsCapture) is the
+// build's to report, as a capture-status finding, not a reader's: it is not
+// sent.
 func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
-	if !p.started.Load() || ev == nil {
+	if !p.started.Load() || ev == nil || collage.IsCapture(ctx) || (ev.Request != nil && collage.IsCapture(ev.Request.Context())) {
 		return nil
 	}
 	if e, ok := p.build(ctx, ev.Err, ev.Status, ev.Stage, ev.Request); ok {
@@ -146,9 +149,10 @@ func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
 // Capture reports err from outside a request, such as a background job. The
 // event has no request and an unknown status, which MinStatus never filters;
 // its transaction is the route ctx carries, if any. A nil err, a disabled
-// plugin, or a call before the app started does nothing.
+// plugin, a call before the app started, or one from a static build's header
+// capture (collage.IsCapture of ctx) does nothing.
 func (p *Plugin) Capture(ctx context.Context, err error) {
-	if !p.started.Load() || err == nil {
+	if !p.started.Load() || err == nil || collage.IsCapture(ctx) {
 		return
 	}
 	if e, ok := p.build(ctx, err, 0, "capture", nil); ok {

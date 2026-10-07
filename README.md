@@ -36,8 +36,9 @@ Set `SENTRY_DSN` to your project's DSN, `https://<key>@o0.ingest.sentry.io/0`.
 The DSN is a credential: keep it in the environment, not in `collage.json`. Errors
 the plugin returns never carry it.
 
-Requires collage v0.50.0 or later, whose `ErrorEvent` carries the status and the
-request, and reports a request's panic as a `*collage.PanicError`. Register it in
+Requires collage v0.52.0 or later, whose `ErrorEvent` carries the status and the
+request, and reports a request's panic as a `*collage.PanicError`, and which marks a
+static build's own requests with `collage.IsCapture`. Register it in
 `Config.Plugins`, where `Configure` runs.
 
 ## Options
@@ -178,3 +179,9 @@ works too. The project must be a number.
   dropped. collage calls it after its server has shut down, with the same
   context, so leave `ShutdownTimeout` room to drain the queue after the last
   request.
+
+## Changes
+
+### v0.1.5
+
+- Requires collage v0.52.0. A static build's header capture (`collage.IsCapture`) is not reported: a 5xx or a panic answering it, and an error a data handler hands `Capture` with its context, are not sent. The build reports a failed capture itself, as a `capture-status` finding.
