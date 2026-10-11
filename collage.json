@@ -3,6 +3,7 @@
   "name": "elagoht/errortrack",
   "description": "Package errortrack sends server errors (5xx and panics) to Sentry, or any service speaking the Sentry protocol, with the standard library alone.",
   "repository": "https://github.com/Elagoht/collage-errortrack",
+  "setup": "Errors go to Sentry, or a service speaking its protocol: set `\"dsnEnv\"` in this plugin's section of `plugins-config.json` to the environment variable holding the DSN. In development nothing is sent, and none is needed.",
   "config": {
     "type": "object",
     "description": "Package errortrack sends server errors (5xx and panics) to Sentry, or any service speaking the Sentry protocol, with the standard library alone.",
