@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Elagoht/collage/pkg/collage"
+	"github.com/Elagoht/collage/pkg/collagetest"
 )
 
 // e2eApp is a started collage app with the plugin, a page at /broken whose
@@ -22,36 +23,23 @@ func e2eApp(t *testing.T, o Options, dev bool) (*collage.App, *Plugin, *fakeSent
 	fake := newFakeSentry(t)
 	o.DSN = strings.Replace(fake.srv.URL, "://", "://fakekey@", 1) + "/123"
 	p := New(o)
-	app, err := collage.New(&collage.Config{
-		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
-		DevMode:  dev,
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
-		Plugins:  []collage.Plugin{p},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	failing := collage.Load(func(context.Context, *collage.RenderContext) (string, error) {
 		return "", errors.New("boom")
 	})
 	page := collage.NewPage("broken").
 		WithContent(collage.NewFragment("body", "p.html").WithData(failing).Required().Build()).
 		WithPath("en", "/broken").Build()
-	if err := app.RegisterPage(page); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.Handle("/boom", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("kaboom") })); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = app.Shutdown(ctx)
-	})
-	return app, p, fake
+	site := collagetest.NewSite(t,
+		collagetest.WithoutHome(),
+		collagetest.WithTemplates(map[string]string{"p.html": `<p>{{.}}</p>`}),
+		collagetest.WithConfig(func(cfg *collage.Config) { cfg.DevMode = dev }),
+		collagetest.WithPlugins(p),
+		collagetest.WithRegister(page),
+		collagetest.WithSetup(func(app *collage.App) error {
+			return app.Handle("/boom", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("kaboom") }))
+		}),
+	)
+	return site.App, p, fake
 }
 
 // get serves a request through app and returns the recorder.

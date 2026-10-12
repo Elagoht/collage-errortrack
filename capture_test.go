@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/Elagoht/collage/pkg/collage"
+	"github.com/Elagoht/collage/pkg/collagetest"
 )
 
 // buildReader reads a finished build, as elagoht/deploy does; with one
@@ -34,15 +34,6 @@ func TestBuildCaptureIsNotReported(t *testing.T) {
 	fake := newFakeSentry(t)
 	p := New(Options{DSN: strings.Replace(fake.srv.URL, "://", "://fakekey@", 1) + "/123"})
 	reader := &buildReader{}
-	app, err := collage.New(&collage.Config{
-		Server:   collage.ServerConfig{Host: "localhost", Port: 3000},
-		Logger:   slog.New(slog.DiscardHandler),
-		Template: collage.TemplateConfig{FS: fstest.MapFS{"t/p.html": {Data: []byte(`<p>{{.}}</p>`)}}, Root: "t"},
-		Plugins:  []collage.Plugin{p, reader},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Fails only when the build asks for the page: the build's own render
 	// succeeds, so the file is written and then captured.
 	failing := collage.Load(func(ctx context.Context, _ *collage.RenderContext) (string, error) {
@@ -59,14 +50,17 @@ func TestBuildCaptureIsNotReported(t *testing.T) {
 		}
 		return "ok", nil
 	})
-	for _, page := range []*collage.Page{
-		collage.NewPage("broken").WithContent(collage.NewFragment("body", "p.html").WithData(failing).Required().Build()).WithPath("en", "/broken").Static().Build(),
-		collage.NewPage("recovers").WithContent(collage.NewFragment("body", "p.html").WithData(capturing).Build()).WithPath("en", "/recovers").Static().Build(),
-	} {
-		if err := app.RegisterPage(page); err != nil {
-			t.Fatal(err)
-		}
-	}
+	site := collagetest.NewSite(t,
+		collagetest.WithoutHome(),
+		collagetest.WithTemplates(map[string]string{"p.html": `<p>{{.}}</p>`}),
+		collagetest.WithConfig(func(cfg *collage.Config) { cfg.Logger = slog.New(slog.DiscardHandler) }),
+		collagetest.WithPlugins(p, reader),
+		collagetest.WithRegister(
+			collage.NewPage("broken").WithContent(collage.NewFragment("body", "p.html").WithData(failing).Required().Build()).WithPath("en", "/broken").Static().Build(),
+			collage.NewPage("recovers").WithContent(collage.NewFragment("body", "p.html").WithData(capturing).Build()).WithPath("en", "/recovers").Static().Build(),
+		),
+	)
+	app := site.App
 	report, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
