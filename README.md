@@ -192,7 +192,9 @@ works too. The project must be a number.
 
 - Requires collage v0.61.0.
 - `sendIP` sends `collage.ClientIP`: behind `Server.TrustedProxies`, the reader's
-  address, where it used to send the proxy's.
+  address, where it used to send the proxy's. When the client address is unknown
+  (no address in `RemoteAddr`, or an unreadable `X-Forwarded-For`), no IP is sent,
+  where it used to send the raw `RemoteAddr` string.
 - The event URL's scheme is `collage.IsHTTPS`: `https://` behind a TLS-terminating
   trusted proxy, where every event used to say `http://`.
 
