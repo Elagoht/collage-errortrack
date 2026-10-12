@@ -67,11 +67,7 @@ func TestBuildCaptureIsNotReported(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	builder, err := collage.NewBuilder(app, collage.BuildOptions{OutDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := builder.Build(context.Background())
+	report, err := collage.Build(context.Background(), app, collage.BuildOptions{OutDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
