@@ -33,11 +33,11 @@ app, err := collage.New(&collage.Config{
 ```
 
 Set `SENTRY_DSN` to your project's DSN, `https://<key>@o0.ingest.sentry.io/0`.
-The DSN is a credential: keep it in the environment, not in `collage.json`. Errors
+The DSN is a credential: keep it in the environment, not in `plugins-config.json`. Errors
 the plugin returns never carry it.
 
-Requires collage v0.52.0 or later, whose `ErrorEvent` carries the status and the
-request, and reports a request's panic as a `*collage.PanicError`, and which marks a
+Requires collage v0.61.0 or later, for `collage.Duration`, `collage.IsHTTPS` and
+strict plugin keys, whose `ErrorEvent` carries the status and the request, and reports a request's panic as a `*collage.PanicError`, and which marks a
 static build's own requests with `collage.IsCapture`. Register it in
 `Config.Plugins`, where `Configure` runs.
 
@@ -54,10 +54,10 @@ static build's own requests with `collage.IsCapture`. Register it in
 | `PerMinute` | `perMinute` | `60` | Events sent per minute at most; the rest are dropped |
 | `QueueSize` | `queueSize` | `100` | Events waiting to be sent; a full queue drops new ones |
 | `InDevelopment` | `inDevelopment` | `false` | Without it nothing is sent in dev mode, and no DSN is needed |
-| `Timeout` | `timeout` | `"5s"` | Per send, and not capped: the default client has no timeout of its own, while an `HTTPClient` you pass keeps its own `Timeout`. A Go duration string, or nanoseconds |
+| `Timeout` | `timeout` | `"5s"` | Per send, and not capped: the default client has no timeout of its own, while an `HTTPClient` you pass keeps its own `Timeout`. A Go duration string; a number fails startup |
 | `SendPath` | `sendPath` | `false` | The raw path instead of the route pattern, and the `Referer`'s path |
 | `SendQuery` | `sendQuery` | `false` | Query values instead of `[filtered]` |
-| `SendIP` | `sendIP` | `false` | The client address |
+| `SendIP` | `sendIP` | `false` | The client address, `collage.ClientIP` (the reader behind `Server.TrustedProxies`, not the proxy) |
 | `User` | not configurable | | `func(r *http.Request) User`. Go only |
 | `BeforeSend` | not configurable | | `func(e *Event) bool`; `false` drops the event. Go only |
 | `HTTPClient` | not configurable | | Your own client for the send. A copy is used that never follows a redirect. Go only |
@@ -76,7 +76,7 @@ unset there; a DSN that is set is still checked.
 | A panic's stack frames, with `in_app` marking your module | always | |
 | Level: `error`, or `fatal` for a panic | always | |
 | Tags `stage`, `route.kind`, `method`, `status` | always | |
-| The route pattern (`/posts/{slug}`) as transaction and in the URL; only `scheme://host` when no route resolved (a middleware's panic) | the raw path only with `SendPath` | |
+| The route pattern (`/posts/{slug}`) as transaction and in the URL; only `scheme://host` when no route resolved (a middleware's panic). The scheme is `collage.IsHTTPS`: `https` behind a trusted proxy that says so | the raw path only with `SendPath` | |
 | Query keys, each value as `[filtered]` | the values only with `SendQuery` | |
 | Request headers `User-Agent`, `Accept`, `Accept-Language`, `Content-Type`, `Content-Length` | always | every other header: `Cookie`, `Authorization`, CSRF tokens... |
 | `Referer`, as its origin `scheme://host`; one without a scheme and host is not sent | its path too (still without credentials, query and fragment) only with `SendPath` | |
@@ -85,7 +85,8 @@ unset there; a DSN that is set is still checked.
 | Environment, release, server host name | always | |
 | | | The request body and form values |
 
-The tags are `stage` (where collage met the failure, or `capture` for `Capture`),
+The tags are `stage` (where collage met the failure, one of the `collage.Stage*`
+values, or `capture` for `Capture`),
 `route.kind` (when a route resolved), `method` and `status` (when known).
 
 ## Error messages may carry secrets
@@ -181,6 +182,19 @@ works too. The project must be a number.
   request.
 
 ## Changes
+
+### Changed in v0.2.0
+
+| Was | Now |
+| --- | --- |
+| `errortrack.Duration` | `collage.Duration` (the type of `Options.Timeout`) |
+| `"timeout"` as a number of nanoseconds | a string only (`"5s"`); a number fails startup naming the key |
+
+- Requires collage v0.61.0.
+- `sendIP` sends `collage.ClientIP`: behind `Server.TrustedProxies`, the reader's
+  address, where it used to send the proxy's.
+- The event URL's scheme is `collage.IsHTTPS`: `https://` behind a TLS-terminating
+  trusted proxy, where every event used to say `http://`.
 
 ### v0.1.5
 

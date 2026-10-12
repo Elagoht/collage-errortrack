@@ -124,19 +124,6 @@ func TestInit_DisabledInDevelopment(t *testing.T) {
 	}
 }
 
-func TestDuration_JSON(t *testing.T) {
-	var d Duration
-	if err := d.UnmarshalJSON([]byte(`"5s"`)); err != nil || time.Duration(d) != 5*time.Second {
-		t.Errorf("string: %v %v", d, err)
-	}
-	if err := d.UnmarshalJSON([]byte(`1000`)); err != nil || time.Duration(d) != time.Microsecond {
-		t.Errorf("number: %v %v", d, err)
-	}
-	if err := d.UnmarshalJSON([]byte(`"soon"`)); err == nil {
-		t.Error("want an error for a bad string")
-	}
-}
-
 func TestOptions_SampleRateNaN(t *testing.T) {
 	o := Options{SampleRate: math.NaN()}
 	if err := o.validate(); err == nil {

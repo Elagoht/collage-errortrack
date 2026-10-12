@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Elagoht/collage/pkg/collage"
 )
 
 // sendPlugin is a test plugin sending to fake, logging to log, on clock.
@@ -375,7 +377,7 @@ func TestShutdown_Drains(t *testing.T) {
 func TestShutdown_RespectsContext(t *testing.T) {
 	fake := newFakeSentry(t)
 	fake.set(func(f *fakeSentry) { f.hanging = true })
-	p := sendPlugin(t, fake, Options{Timeout: Duration(time.Hour)}, nil, nil)
+	p := sendPlugin(t, fake, Options{Timeout: collage.Duration(time.Hour)}, nil, nil)
 	p.startSender()
 	for range 5 {
 		p.enqueue(fullEvent())

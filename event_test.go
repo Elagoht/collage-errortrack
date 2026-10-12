@@ -211,8 +211,9 @@ func TestRequestInfo_NoPattern(t *testing.T) {
 	if got.Query != "" {
 		t.Errorf("Query = %q, want empty", got.Query)
 	}
-	if got.IP != "no-port" {
-		t.Errorf("IP = %q", got.IP)
+	// RemoteAddr holds no address, so collage.ClientIP is unknown: none is sent.
+	if got.IP != "" {
+		t.Errorf("IP = %q, want none for a RemoteAddr with no address", got.IP)
 	}
 	if requestInfo(nil, "", Options{}) != nil {
 		t.Error("requestInfo(nil) is not nil")

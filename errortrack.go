@@ -100,7 +100,7 @@ func (p *Plugin) Configure(_ context.Context, host collage.ConfigHost) error {
 		o.QueueSize = 100
 	}
 	if o.Timeout == 0 {
-		o.Timeout = Duration(5 * time.Second)
+		o.Timeout = collage.Duration(5 * time.Second)
 	}
 	p.configured = true
 	return nil
@@ -146,6 +146,10 @@ func (p *Plugin) OnError(ctx context.Context, ev *collage.ErrorEvent) error {
 	return nil
 }
 
+// stageCapture is the "stage" tag of an event Capture sends: the plugin's own
+// stage, beside core's collage.Stage* values that OnError passes through.
+const stageCapture = "capture"
+
 // Capture reports err from outside a request, such as a background job. The
 // event has no request and an unknown status, which MinStatus never filters;
 // its transaction is the route ctx carries, if any. A nil err, a disabled
@@ -155,7 +159,7 @@ func (p *Plugin) Capture(ctx context.Context, err error) {
 	if !p.started.Load() || err == nil || collage.IsCapture(ctx) {
 		return
 	}
-	if e, ok := p.build(ctx, err, 0, "capture", nil); ok {
+	if e, ok := p.build(ctx, err, 0, stageCapture, nil); ok {
 		p.enqueue(e)
 	}
 }

@@ -1,11 +1,12 @@
 package errortrack
 
 import (
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/Elagoht/collage/pkg/collage"
 )
 
 // sentHeaders are the only request headers an event carries. Cookie,
@@ -22,7 +23,7 @@ func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 		return nil
 	}
 	scheme := "http"
-	if r.TLS != nil {
+	if collage.IsHTTPS(r) {
 		scheme = "https"
 	}
 	path := pattern
@@ -53,9 +54,10 @@ func requestInfo(r *http.Request, pattern string, o Options) *RequestInfo {
 		info.Headers[name] = v
 	}
 	if o.SendIP {
-		info.IP = r.RemoteAddr
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			info.IP = host
+		// The reader's address, through Server.TrustedProxies; none when it is
+		// unknown (no address in RemoteAddr, or an unreadable X-Forwarded-For).
+		if ip := collage.ClientIP(r); ip.IsValid() {
+			info.IP = ip.String()
 		}
 	}
 	return info

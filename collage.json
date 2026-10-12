@@ -53,20 +53,12 @@
         "description": "query values instead of \"[filtered]\""
       },
       "timeout": {
+        "type": "string",
         "description": "per send, default \"5s\"",
-        "anyOf": [
-          {
-            "type": "string",
-            "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
-            "examples": [
-              "30s",
-              "5m"
-            ]
-          },
-          {
-            "type": "integer",
-            "description": "nanoseconds"
-          }
+        "pattern": "^(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+$",
+        "examples": [
+          "30s",
+          "5m"
         ]
       }
     },
